@@ -1,0 +1,65 @@
+design_task:
+  description: >
+    Take the high-level requirements described here and prepare a detailed backend design for the engineering team.
+    The design must be contained within a single Python module named {module_name}, with a primary class {class_name}.
+    Clearly outline the classes, methods, and function signatures in the module, describing their responsibilities
+    and interactions. The design should emphasize testability and extensibility, ensuring the module can be easily
+    integrated with a simple UI or tested independently.
+    Here are the requirements: {requirements}
+    IMPORTANT: Only output the design in markdown format, laying out in detail the classes and functions in the module,
+    describing the functionality.
+  expected_output: >
+    A detailed design document in markdown format, identifying the classes, methods, and functions in the module,
+    along with their responsibilities and interactions.
+  agent: engineering_lead
+  output_file: output/{module_name}_design.md
+
+code_task:
+  description: >
+    Implement the detailed design provided by the Engineering Lead into a fully self-contained Python module.
+    The module must strictly follow the outlined classes, methods, and function signatures, ensuring it meets all
+    specified requirements. It should be named {module_name} and contain the primary class {class_name}.
+    The implementation must be clean, efficient, and ready for direct testing or integration with a simple UI.
+    Here are the requirements: {requirements}
+  expected_output: >
+    A complete Python module named {module_name} that faithfully implements the design and achieves the requirements.
+    IMPORTANT: Output ONLY the raw Python code without any markdown formatting, code block delimiters, or backticks.
+    The output must be valid Python code that can be directly saved to a file and executed.
+  agent: backend_engineer
+  context:
+    - design_task
+  output_file: output/{module_name}
+
+frontend_task:
+  description: >
+    Develop a simple Gradio UI in a module named app.py that demonstrates the backend class implemented in {module_name}.
+    The UI should be minimal, assuming a single user, and serve as a prototype or demo interface.
+    It must provide clear input and output components that showcase the backend functionality.
+    Here are the requirements: {requirements}
+  expected_output: >
+    A fully functional Gradio UI in app.py that demonstrates the backend class from {module_name}.
+    The file must be self-contained, runnable as-is in the same directory as the backend module,
+    and correctly import the backend class {class_name} from {module_name}.
+    IMPORTANT: Output ONLY the raw Python code without any markdown formatting, code block delimiters, or backticks.
+    The output must be valid Python code that can be directly saved to a file and executed.
+  agent: frontend_engineer
+  context:
+    - code_task
+  output_file: output/app.py
+
+test_task:
+  description: >
+    Write a comprehensive set of unit tests for the backend module {module_name}.
+    The tests must validate all critical functions and method signatures defined in the class {class_name},
+    covering normal usage scenarios as well as edge cases. The test suite should ensure correctness,
+    reliability, and maintainability of the backend implementation. Deliver the tests in a file named
+    test_{module_name}.py, located in the same directory as the backend module.
+    Here are the requirements: {requirements}
+  expected_output: >
+    A Python test suite in test_{module_name}.py that thoroughly tests the backend module {module_name}.
+    IMPORTANT: Output ONLY the raw Python code without any markdown formatting, code block delimiters, or backticks.
+    The output must be valid Python code that can be directly saved to a file and executed.
+  agent: test_engineer
+  context:
+    - code_task
+  output_file: output/test_{module_name}.py
