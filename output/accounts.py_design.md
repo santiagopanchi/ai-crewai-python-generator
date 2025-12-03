@@ -1,353 +1,207 @@
+```markdown
+# Backend Design for `accounts.py` Module
+
+## Overview
+The `accounts.py` module provides a backend design for a simple account management system used in a trading simulation platform. The primary class is `Account`, which encapsulates user account state and behaviors such as depositing, withdrawing, buying, and selling shares, along with reporting portfolio value, profit/loss, holdings, and transaction history.
+
+This design prioritizes:
+- **Testability:** Clear method boundaries, easy-to-assert state changes, and no external side effects except the `get_share_price` function.
+- **Extensibility:** Future methods or account types can be added; encapsulated transactions enable adding additional transaction kinds or audit trails.
+- **Integration:** Simple method signatures with return values and exceptions for invalid operations facilitate integration with UI or other layers.
+
+---
+
+## Module Components
+
+### 1. Function: `get_share_price(symbol: str) -> float`
+- **Responsibility:** Return the current price of a stock share by its symbol.
+- **Notes:**  
+  - Provided as a standalone function, assumed accessible by the `Account` class.
+  - Includes a test implementation returning fixed prices for `"AAPL"`, `"TSLA"`, and `"GOOGL"`.
+- **Signature:**  
+  ```python
+  def get_share_price(symbol: str) -> float
+  ```
+- **Example behavior:**  
+  ```python
+  get_share_price("AAPL")  # returns fixed price, e.g., 150.0
+  ```
+
+---
+
+### 2. Class: `Transaction`
+- **Responsibility:** Represent a single transaction record for the Account.
+- **Attributes:**
+  - `timestamp: datetime` — time when the transaction occurred
+  - `type: str` — `"deposit"`, `"withdrawal"`, `"buy"`, or `"sell"`
+  - `amount: float` — money amount for deposits/withdrawals or total cost for buy/sell
+  - `symbol: Optional[str]` — stock symbol for buy/sell transactions; None otherwise
+  - `quantity: Optional[int]` — quantity of shares bought/sold; None otherwise
+- **Purpose:** Decouples transaction data from business logic, allowing history listing and auditing.
+- **Signature:**  
+  ```python
+  class Transaction:
+      def __init__(self, timestamp: datetime, type: str, amount: float,
+                   symbol: Optional[str] = None, quantity: Optional[int] = None):
+          ...
+  ```
+
+---
+
+### 3. Class: `Account`
+The central class encapsulating all account information and trading behavior.
+
+#### Attributes:
+- `initial_deposit: float`
+- `cash_balance: float` — available cash for trades and withdrawals
+- `holdings: Dict[str, int]` — shares held keyed by symbol
+- `transactions: List[Transaction]` — ordered list of transaction records
+- **Design:**  
+  Hold granular state to easily calculate portfolio values and enforce constraints.
+
+#### Constructor:
 ```python
-"""
-accounts.py
+def __init__(self)
+```
+- Initializes empty account (zero balances and no transactions).
 
-A module implementing a simple account management system for a trading simulation platform.
+#### Methods:
 
-Primary class:
-- Account: Represents a user's trading account, managing funds, share transactions, and portfolio valuation.
+1. **create_account(deposit_amount: float) -> None**
+   - Initialize account by making the first deposit.
+   - Sets `initial_deposit` and `cash_balance` to `deposit_amount`.
+   - Records a deposit transaction.
+   - Raises ValueError if deposit_amount <= 0 or if account already initialized.
+  
+2. **deposit(amount: float) -> None**
+   - Adds funds to `cash_balance`.
+   - Records a deposit transaction.
+   - Raises ValueError if amount <= 0 or account not initialized.
 
-Other components:
-- get_share_price(symbol: str) -> float: Provides current share prices (test implementation with fixed data).
-- Transaction: Internal data structure to represent a single transaction (buy/sell/deposit/withdraw).
+3. **withdraw(amount: float) -> None**
+   - Decreases `cash_balance` by amount.
+   - Records a withdrawal transaction.
+   - Raises ValueError if amount <= 0, account not initialized, or withdrawal results in negative balance.
 
-Design focuses on:
-- Clear class and method signatures for ease of testing.
-- Robust validation to prevent invalid operations.
-- Easy integration with UIs or other modules.
-"""
+4. **buy(symbol: str, quantity: int) -> None**
+   - Purchase shares of `symbol` at current price `get_share_price(symbol)`.
+   - Calculates total_cost = price * quantity.
+   - Checks if `cash_balance` >= total_cost before proceeding.
+   - Deducts total_cost from `cash_balance`.
+   - Updates `holdings` by adding quantity.
+   - Records a buy transaction.
+   - Raises ValueError if quantity <= 0, insufficient funds, invalid symbol, or account not initialized.
 
-from typing import List, Dict, Union
-from dataclasses import dataclass
+5. **sell(symbol: str, quantity: int) -> None**
+   - Sell shares of `symbol` at current price.
+   - Checks if holdings for `symbol` >= quantity.
+   - Calculates proceeds = price * quantity.
+   - Adds proceeds to `cash_balance`.
+   - Updates `holdings` by reducing quantity.
+   - Records a sell transaction.
+   - Raises ValueError if quantity <= 0, insufficient shares, invalid symbol, or account not initialized.
+
+6. **get_portfolio_value() -> float**
+   - Returns total current value of: `cash_balance` + sum for each symbol (price * quantity held).
+   - Uses `get_share_price` to retrieve live prices.
+   - Returns 0 if account uninitialized.
+
+7. **get_profit_loss() -> float**
+   - Returns current portfolio total value minus `initial_deposit`.
+   - Positive if profit, negative if loss, zero if break-even or uninitialized.
+
+8. **get_holdings() -> Dict[str, int]**
+   - Returns a copy of current holdings dictionary (symbol → quantity).
+   - Empty dict if no holdings or uninitialized.
+
+9. **get_transactions() -> List[Transaction]**
+   - Returns ordered list of all transactions made on the account.
+   - Empty list if no transactions.
+
+---
+
+## Summary of Interactions
+
+- User creates account with an initial deposit (creates baseline for profit/loss).
+- User deposits/withdraws cash that updates `cash_balance` and records transactions.
+- User buys shares when they have enough cash, updating holdings and cash.
+- User sells shares only if they have sufficient quantity, cash updated accordingly.
+- User queries portfolio value and profit/loss dynamically using live prices.
+- Transaction history enables audit and UI display.
+- All state changes generate transactions for consistent state tracking.
+- `get_share_price` external dependency mocked for testing and fixed prices.
+
+---
+
+## Example Module Skeleton (Signatures Only)
+
+```python
 from datetime import datetime
-
+from typing import Optional, List, Dict
 
 def get_share_price(symbol: str) -> float:
     """
-    Test implementation returning fixed share prices for known symbols.
-    In a real system, this would interface with a pricing service.
-
-    Args:
-        symbol (str): Stock symbol.
-
-    Returns:
-        float: Current price of the share.
-
-    Raises:
-        ValueError: If the symbol is unknown.
+    Returns current price for given share symbol.
+    Test implementation returns fixed prices for 'AAPL', 'TSLA', 'GOOGL'.
     """
-    prices = {
-        'AAPL': 150.0,
-        'TSLA': 700.0,
-        'GOOGL': 2800.0,
-    }
-    if symbol not in prices:
-        raise ValueError(f"Unknown share symbol: {symbol}")
-    return prices[symbol]
+    ...
 
-
-@dataclass(frozen=True)
 class Transaction:
-    """
-    Represents a financial or share transaction in the account.
-
-    Attributes:
-        timestamp (datetime): When the transaction occurred.
-        type (str): One of {'deposit', 'withdrawal', 'buy', 'sell'}.
-        amount (float): Amount of money involved (for deposits/withdrawals).
-        symbol (Union[str, None]): Stock symbol (for buys/sells), None otherwise.
-        quantity (Union[int, None]): Number of shares bought or sold, None for deposit/withdrawal.
-        price_per_share (Union[float, None]): Share price at transaction time, None for deposit/withdrawal.
-    """
-    timestamp: datetime
-    type: str
-    amount: float = 0.0
-    symbol: Union[str, None] = None
-    quantity: Union[int, None] = None
-    price_per_share: Union[float, None] = None
-
+    def __init__(self, timestamp: datetime, type: str, amount: float,
+                 symbol: Optional[str] = None, quantity: Optional[int] = None):
+        ...
 
 class Account:
-    """
-    Represents a user's trading account that tracks deposits, withdrawals,
-    share transactions, portfolio valuation, and profit/loss.
-
-    Responsibilities:
-    - Manage cash balance and stock holdings.
-    - Record all transactions.
-    - Enforce rules preventing overdrawing or invalid trades.
-    - Provide portfolio value and profit/loss reports.
-    """
-
     def __init__(self) -> None:
+        ...
+
+    def create_account(self, deposit_amount: float) -> None:
         """
-        Initialize a new Account.
-
-        Starts with zero cash balance and no holdings.
-        Initializes empty transaction history.
+        Initialize account with initial deposit.
         """
-        self._cash_balance: float = 0.0
-        self._holdings: Dict[str, int] = {}  # symbol -> share count
-        self._transactions: List[Transaction] = []
-        self._initial_deposit: float = 0.0
-
-    def create_account(self, initial_deposit: float) -> None:
-        """
-        Create account with an initial deposit.
-
-        Args:
-            initial_deposit (float): Starting cash added to the account; must be > 0.
-
-        Raises:
-            ValueError: If initial_deposit <= 0 or account already created.
-        """
-        if self._initial_deposit > 0:
-            raise ValueError("Account already created with initial deposit.")
-        if initial_deposit <= 0:
-            raise ValueError("Initial deposit must be greater than zero.")
-
-        self._cash_balance = initial_deposit
-        self._initial_deposit = initial_deposit
-        self._transactions.append(
-            Transaction(
-                timestamp=datetime.now(),
-                type="deposit",
-                amount=initial_deposit
-            )
-        )
 
     def deposit(self, amount: float) -> None:
         """
-        Deposit additional funds into the account.
-
-        Args:
-            amount (float): Amount to deposit > 0.
-
-        Raises:
-            ValueError: If amount <= 0.
+        Deposit funds into account.
         """
-        if amount <= 0:
-            raise ValueError("Deposit amount must be greater than zero.")
-        self._cash_balance += amount
-        self._transactions.append(
-            Transaction(
-                timestamp=datetime.now(),
-                type="deposit",
-                amount=amount
-            )
-        )
 
     def withdraw(self, amount: float) -> None:
         """
-        Withdraw funds from the account.
-
-        Args:
-            amount (float): Amount to withdraw > 0.
-
-        Raises:
-            ValueError: If amount <= 0 or insufficient cash balance.
+        Withdraw funds from account if sufficient balance.
         """
-        if amount <= 0:
-            raise ValueError("Withdrawal amount must be greater than zero.")
-        if amount > self._cash_balance:
-            raise ValueError("Insufficient funds for withdrawal.")
-        self._cash_balance -= amount
-        self._transactions.append(
-            Transaction(
-                timestamp=datetime.now(),
-                type="withdrawal",
-                amount=amount
-            )
-        )
 
     def buy(self, symbol: str, quantity: int) -> None:
         """
-        Record purchase of shares.
-
-        Args:
-            symbol (str): Stock symbol to buy.
-            quantity (int): Number of shares to buy (> 0).
-
-        Raises:
-            ValueError: If symbol unknown, quantity not positive,
-                        or insufficient funds to cover purchase.
+        Buy shares of symbol if enough cash balance.
         """
-        if quantity <= 0:
-            raise ValueError("Quantity to buy must be greater than zero.")
-        share_price = get_share_price(symbol)
-        total_cost = share_price * quantity
-        if total_cost > self._cash_balance:
-            raise ValueError("Insufficient funds to buy shares.")
-        # Deduct cost
-        self._cash_balance -= total_cost
-        # Update holdings
-        self._holdings[symbol] = self._holdings.get(symbol, 0) + quantity
-        # Record transaction
-        self._transactions.append(
-            Transaction(
-                timestamp=datetime.now(),
-                type="buy",
-                symbol=symbol,
-                quantity=quantity,
-                price_per_share=share_price
-            )
-        )
 
     def sell(self, symbol: str, quantity: int) -> None:
         """
-        Record sale of shares.
-
-        Args:
-            symbol (str): Stock symbol to sell.
-            quantity (int): Number of shares to sell (> 0).
-
-        Raises:
-            ValueError: If symbol unknown, quantity not positive,
-                        or insufficient shares held to sell.
+        Sell shares of symbol if holdings sufficient.
         """
-        if quantity <= 0:
-            raise ValueError("Quantity to sell must be greater than zero.")
-        current_quantity = self._holdings.get(symbol, 0)
-        if quantity > current_quantity:
-            raise ValueError("Insufficient shares held to sell.")
-        share_price = get_share_price(symbol)
-        total_proceeds = share_price * quantity
-        # Update holdings
-        new_quantity = current_quantity - quantity
-        if new_quantity == 0:
-            del self._holdings[symbol]
-        else:
-            self._holdings[symbol] = new_quantity
-        # Add proceeds to cash balance
-        self._cash_balance += total_proceeds
-        # Record transaction
-        self._transactions.append(
-            Transaction(
-                timestamp=datetime.now(),
-                type="sell",
-                symbol=symbol,
-                quantity=quantity,
-                price_per_share=share_price
-            )
-        )
-
-    def get_cash_balance(self) -> float:
-        """
-        Get current cash balance.
-
-        Returns:
-            float: Current cash available in account.
-        """
-        return self._cash_balance
-
-    def get_holdings(self) -> Dict[str, int]:
-        """
-        Get current stock holdings.
-
-        Returns:
-            Dict[str, int]: Mapping symbol -> number of shares held.
-        """
-        # Return a copy to prevent external mutation
-        return dict(self._holdings)
 
     def get_portfolio_value(self) -> float:
         """
-        Calculate total portfolio value (cash + market value of shares).
-
-        Returns:
-            float: Total portfolio value based on current share prices.
+        Compute total portfolio value: cash + holdings.
         """
-        total_value = self._cash_balance
-        for symbol, quantity in self._holdings.items():
-            share_price = get_share_price(symbol)
-            total_value += share_price * quantity
-        return total_value
 
     def get_profit_loss(self) -> float:
         """
-        Calculate profit or loss relative to the initial deposit.
-
-        Returns:
-            float: Profit (positive) or loss (negative)
+        Compute profit/loss from initial deposit.
         """
-        current_value = self.get_portfolio_value()
-        return current_value - self._initial_deposit
 
-    def list_transactions(self) -> List[Transaction]:
+    def get_holdings(self) -> Dict[str, int]:
         """
-        Get full history of transactions.
+        Get current holdings dictionary.
+        """
 
-        Returns:
-            List[Transaction]: Ordered list of all transactions by timestamp.
+    def get_transactions(self) -> List[Transaction]:
         """
-        # Return a copy to prevent external mutation
-        return list(self._transactions)
+        Return list of all transactions.
+        """
 ```
 
 ---
 
-## Design Explanation
-
-### Module Overview
-- `accounts.py` encapsulates all logic related to a user's trading account.  
-- It contains the main class `Account` to manage all account operations, plus supporting structures and a stub pricing function.
-
-### Key Components
-
-#### `get_share_price(symbol: str) -> float`
-- Standalone function for obtaining current share price.  
-- Uses a static dictionary for testing.  
-- Raises `ValueError` for unknown symbols.
-
-#### `Transaction` (Dataclass)
-- Immutable representation of a transaction record.  
-- Supports four types: deposit, withdrawal, buy, sell.  
-- Captures timestamp, monetary amounts, symbols, quantities, and prices as applicable.  
-- Enables detailed transaction history tracking.
-
-#### `Account`
-- **State maintained:**
-  - `_cash_balance`: current available cash.  
-  - `_holdings`: dict mapping stock symbol to share quantity.  
-  - `_transactions`: list of all transactions in chronological order.  
-  - `_initial_deposit`: starting cash balance for profit/loss calculations.
-
-- **Methods:**
-
-  - `create_account(initial_deposit: float) -> None`: Initializes the account with starting cash. Ensures single initialization and positive amount.
-  
-  - `deposit(amount: float) -> None`: Adds funds to cash balance. Validates positive amount.
-  
-  - `withdraw(amount: float) -> None`: Removes funds from cash balance if sufficient. Prevents overdrafts.
-  
-  - `buy(symbol: str, quantity: int) -> None`: Buys shares if the user has enough cash. Updates holdings and cash.
-  
-  - `sell(symbol: str, quantity: int) -> None`: Sells shares if the user holds enough. Updates holdings and cash.
-  
-  - `get_cash_balance() -> float`: Returns current cash balance.
-  
-  - `get_holdings() -> Dict[str,int]`: Returns a copy of current share holdings.
-  
-  - `get_portfolio_value() -> float`: Computes total portfolio value (cash + current shares).
-  
-  - `get_profit_loss() -> float`: Calculates profit or loss relative to initial deposit.
-  
-  - `list_transactions() -> List[Transaction]`: Returns a copy of the full transaction history for reporting or display.
-
-### Validation and Integrity
-- Withdrawals and buys carefully check balance and holdings, raising exceptions on invalid attempts.
-- Sells ensure user cannot sell more shares than held.
-- Initial account creation only allowed once, with positive starting balance.
-- Input checks guard against invalid zero or negative quantities/amounts.
-
-### Testability and Extensibility
-- Use of `dataclasses` for transaction records helps easily create test transactions.
-- Method signatures are straightforward — accept primitives with clear exceptions.
-- No external dependencies beyond Python standard library.
-- `get_share_price` is a separate function that can be stubbed or swapped with a real price feed for integration or unit testing.
-- Internal state variables are protected (prefixed with `_`) and returned data are copies to prevent external modifications.
-- This design allows easy addition of features such as fees, different asset types, or persistence without breaking public interfaces.
-
----
-
-This detailed design in `accounts.py` provides a robust, testable, and extensible backend foundation for a trading simulation platform's account management system as requested.
+This design provides a clear, self-contained Python module layout focusing on correctness, clarity, testability, and ease of integration with any frontend or manual testing harness.
+```
